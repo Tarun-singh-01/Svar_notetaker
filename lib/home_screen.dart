@@ -2,16 +2,17 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'package:dio/dio.dart'; // Import dio
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:indic_notetaker/main.dart';
 import 'package:indic_notetaker/models/recording_model.dart';
 import 'package:indic_notetaker/screens/results_screen.dart';
-import 'package:indic_notetaker/services/local_storage_service.dart';
 import 'package:indic_notetaker/widgets/recording_card.dart';
 import 'package:indic_notetaker/widgets/recording_setup_sheet.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:record/record.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,34 +23,66 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  final AudioRecorder _audioRecorder = AudioRecorder();
+  final FlutterSoundRecorder _audioRecorder = FlutterSoundRecorder();
+  bool _isRecorderInitialized = false;
   bool _isRecording = false;
   bool _isLoading = false;
   String _selectedTemplate = 'Meeting Notes';
+  String? _recordingPath;
 
-  // !!! IMPORTANT: MAKE SURE THIS IS YOUR COMPUTER'S IP ADDRESS !!!
-  final String _serverUrl = 'http://YOUR_COMPUTER_IP:8000/transcribe';
-  
-  // A future to hold our list of recordings
-  late Future<List<Recording>> _recordingsFuture;
+  // Make sure this points to your live Render server URL
+  final String _serverUrl = 'https://svar-ai-server.onrender.com/transcribe'; 
+
+  late Future<List<Map<String, dynamic>>> _notesFuture;
 
   @override
   void initState() {
     super.initState();
-    // Load recordings when the screen first opens
-    _loadRecordings();
+    _initializeRecorder();
+    _fetchNotes();
   }
 
-  void _loadRecordings() {
+  Future<void> _initializeRecorder() async {
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) {
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission is required to record audio.')),
+        );
+      }
+      return;
+    }
+    await _audioRecorder.openRecorder();
+    _isRecorderInitialized = true;
+  }
+
+  void _fetchNotes() {
+    if (supabase.auth.currentUser == null) return;
     setState(() {
-      _recordingsFuture = LocalStorageService.getRecordings();
+      _notesFuture = supabase
+          .from('notes')
+          .select()
+          .eq('user_id', supabase.auth.currentUser!.id)
+          .order('created_at', ascending: false);
     });
   }
 
   @override
   void dispose() {
-    _audioRecorder.dispose();
+    _audioRecorder.closeRecorder();
     super.dispose();
+  }
+  
+  Future<void> _signOut() async {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error signing out: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   void _onItemTapped(int index) {
@@ -80,16 +113,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _performRecording() async {
+    if (!_isRecorderInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recorder not initialized. Please grant microphone permissions.')),
+      );
+      return;
+    }
     try {
-      if (await _audioRecorder.hasPermission()) {
-        final Directory appDocumentsDir = await getApplicationDocumentsDirectory();
-        final filePath = '${appDocumentsDir.path}/my_recording.m4a';
-        await _audioRecorder.start(
-          const RecordConfig(encoder: AudioEncoder.aacLc),
-          path: filePath,
-        );
-        setState(() => _isRecording = true);
-      }
+      final Directory tempDir = await getTemporaryDirectory();
+      _recordingPath = '${tempDir.path}/flutter_sound.aac';
+      await _audioRecorder.startRecorder(
+        toFile: _recordingPath,
+        codec: Codec.aacADTS,
+      );
+      setState(() => _isRecording = true);
     } catch (e) {
       print('Error starting recording: $e');
     }
@@ -97,13 +134,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _stopRecording() async {
     try {
-      final String? path = await _audioRecorder.stop();
+      await _audioRecorder.stopRecorder();
       setState(() {
         _isRecording = false;
         _isLoading = true;
       });
-      if (path != null) {
-        _uploadRecording(path);
+      if (_recordingPath != null) {
+        _uploadRecording(_recordingPath!);
       }
     } catch (e) {
       print('Error stopping recording: $e');
@@ -112,40 +149,72 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _uploadRecording(String filePath) async {
+    // 1. Configure Dio with a longer timeout
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 60), // 60 seconds to connect
+      receiveTimeout: const Duration(seconds: 60), // 60 seconds to receive response
+    ));
+
     try {
-      var request = http.MultipartRequest('POST', Uri.parse(_serverUrl));
-      String templateApiValue =
-          _selectedTemplate == 'Meeting Notes' ? 'meeting_notes' : 'todo_list';
-      request.fields['template_type'] = templateApiValue;
-      request.files.add(await http.MultipartFile.fromPath('file', filePath));
-      var response = await request.send();
+      // 2. Prepare the file for upload
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(filePath),
+      });
+
+      // 3. Send the request
+      final response = await dio.post(_serverUrl, data: formData);
 
       setState(() => _isLoading = false);
 
+      // 4. Handle the response
       if (response.statusCode == 200) {
-        final responseBody = await response.stream.bytesToString();
-        final decodedResponse = jsonDecode(responseBody);
+        final decodedResponse = response.data;
         
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ResultsScreen(
-              summary: decodedResponse['summary'] ?? 'No summary found.',
-              transcript: decodedResponse['transcript'] ?? 'No transcript found.',
+        final summary = decodedResponse['summary'] ?? 'No summary found.';
+        final transcript = decodedResponse['transcript'] ?? 'No transcript found.';
+        final now = DateTime.now();
+        final title = 'Recording from ${DateFormat.yMMMd().format(now)}';
+
+        // Insert the new note AND get the created record back
+        final newNoteData = await supabase.from('notes').insert({
+          'title': title,
+          'summary': summary,
+          'transcript': transcript,
+          'user_id': supabase.auth.currentUser!.id,
+        }).select().single();
+
+        final newRecording = Recording.fromJson(newNoteData);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Note saved successfully!'),
+              backgroundColor: Colors.green,
             ),
-          ),
-        );
+          );
 
-        // After returning from the results screen, reload the list
-        _loadRecordings();
-
+          // Navigate to the ResultsScreen with the new recording
+          Navigator.push(context, MaterialPageRoute(
+            builder: (context) => ResultsScreen(recording: newRecording),
+          ));
+        }
+        
+        _fetchNotes(); 
+    
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error: Could not get response from server.')));
+        print("Server Error Response: ${response.data}");
+        if (mounted){
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Error: Could not get response from server.')));
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error: Failed to connect to the server.')));
+      setState(() => _isLoading = false);
+      print("Connection Error: $e");
+      if (mounted){
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Failed to connect to the server.')));
+      }
     }
   }
 
@@ -157,9 +226,10 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: CircleAvatar(backgroundColor: Colors.teal.shade300, child: const Text('T')),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _signOut,
+            tooltip: 'Sign Out',
           ),
         ],
       ),
@@ -167,9 +237,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              // Use a FutureBuilder to handle loading the data
-              child: FutureBuilder<List<Recording>>(
-                future: _recordingsFuture,
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _notesFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -185,32 +254,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   }
 
-                  // If we have data, display it in a list
-                  final recordings = snapshot.data!;
-                  // Sort by date, newest first
-                  recordings.sort((a, b) => b.date.compareTo(a.date));
+                  final notes = snapshot.data!;
+                  return ListView.builder(
+                    itemCount: notes.length,
+                    itemBuilder: (context, index) {
+                      final noteData = notes[index];
+                      final recording = Recording.fromJson(noteData);
 
-                  return ListView(
-                    children: [
-                      const SizedBox(height: 16),
-                      const Text('Latest', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      ...recordings.map((rec) {
-                        return RecordingCard(
-                          title: rec.title,
-                          date: DateFormat.yMMMd().format(rec.date),
-                          onTap: () {
-                            // Navigate to results page with the saved data
-                            Navigator.push(context, MaterialPageRoute(
-                              builder: (context) => ResultsScreen(
-                                summary: rec.summary,
-                                transcript: rec.transcript,
-                              ),
-                            ));
-                          },
-                        );
-                      }).toList(),
-                    ],
+                      return RecordingCard(
+                        title: recording.title,
+                        date: DateFormat.yMMMd().format(recording.createdAt),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(
+                            builder: (context) => ResultsScreen(
+                              recording: recording,
+                            ),
+                          ));
+                        },
+                      );
+                    },
                   );
                 },
               ),

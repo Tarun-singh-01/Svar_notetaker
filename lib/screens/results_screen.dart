@@ -2,49 +2,20 @@
 
 import 'package:flutter/material.dart';
 import 'package:indic_notetaker/models/recording_model.dart';
-import 'package:indic_notetaker/services/local_storage_service.dart';
 import 'package:intl/intl.dart';
 
-class ResultsScreen extends StatefulWidget {
-  final String summary;
-  final String transcript;
+class ResultsScreen extends StatelessWidget {
+  final Recording recording;
 
   const ResultsScreen({
     super.key,
-    required this.summary,
-    required this.transcript,
+    required this.recording,
   });
-
-  @override
-  State<ResultsScreen> createState() => _ResultsScreenState();
-}
-
-class _ResultsScreenState extends State<ResultsScreen> {
-  @override
-  void initState() {
-    super.initState();
-    // When this screen loads, automatically save the recording.
-    _saveThisRecording();
-  }
-
-  Future<void> _saveThisRecording() async {
-    final now = DateTime.now();
-    final newRecording = Recording(
-      id: now.millisecondsSinceEpoch.toString(), // A unique ID based on time
-      title: 'Recording from ${DateFormat.yMMMd().format(now)}', // A generated title
-      date: now,
-      summary: widget.summary,
-      transcript: widget.transcript,
-    );
-
-    await LocalStorageService.saveRecording(newRecording);
-    print('Recording saved successfully!');
-  }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 3, // We now have 3 tabs as per your design
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.transparent,
@@ -60,41 +31,57 @@ class _ResultsScreenState extends State<ResultsScreen> {
             tabs: [
               Tab(text: 'Summary'),
               Tab(text: 'Transcript'),
-              Tab(text: 'Action Items'),
+              Tab(text: 'Action Items'), // Added Action Items tab
             ],
           ),
         ),
         body: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 24),
-              const Center(
-                child: Icon(Icons.play_circle_fill_rounded, size: 64, color: Colors.white),
+              const SizedBox(height: 16),
+              // We'll add the audio player UI here in a future step
+              Center(
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  size: 64,
+                  color: Colors.white.withOpacity(0.8),
+                ),
               ),
               const SizedBox(height: 24),
+              // Use the title and date from the recording object
               Text(
-                DateFormat('MMMM d, yyyy').format(DateTime.now()),
+                recording.title,
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               Text(
-                DateFormat('h:mm a').format(DateTime.now()),
+                DateFormat('MMMM d, yyyy  h:mm a').format(recording.createdAt),
                 style: const TextStyle(color: Colors.grey, fontSize: 16),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               Expanded(
                 child: TabBarView(
                   children: [
+                    // --- This is the fix ---
+                    // Display the summary from the passed 'recording' object
                     SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(vertical: 16.0),
-                      child: Text(widget.summary),
+                      child: Text(
+                        recording.summary,
+                        style: const TextStyle(fontSize: 16, height: 1.5),
+                      ),
                     ),
+                    // Display the transcript from the passed 'recording' object
                     SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(vertical: 16.0),
-                      child: Text(widget.transcript),
+                      child: Text(
+                        recording.transcript,
+                        style: const TextStyle(fontSize: 16, height: 1.5),
+                      ),
                     ),
+                    // Placeholder for Action Items
                     const Center(child: Text('Action Items will be shown here.')),
                   ],
                 ),

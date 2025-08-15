@@ -1,44 +1,41 @@
 // lib/models/recording_model.dart
 
-// ignore: unused_import
-import 'dart:convert';
-
 class Recording {
-  final String id;
+  final String? id; // Can be null if the object hasn't been saved yet
   final String title;
-  final DateTime date;
+  final DateTime createdAt;
   final String summary;
   final String transcript;
+  // We will use user_id in a later phase
 
   Recording({
-    required this.id,
+    this.id,
     required this.title,
-    required this.date,
+    required this.createdAt,
     required this.summary,
     required this.transcript,
   });
 
-  // This method converts our Recording object into a Map,
-  // which can then be easily converted to a JSON string.
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'date': date.toIso8601String(), // Convert DateTime to a standard string format
-      'summary': summary,
-      'transcript': transcript,
-    };
-  }
-
-  // This factory constructor creates a Recording object from a Map.
-  // This is how we'll decode the data when we load it from storage.
+  // A factory constructor to create a Recording from a Map (JSON)
+  // This is how we'll read data from Supabase
   factory Recording.fromJson(Map<String, dynamic> json) {
     return Recording(
-      id: json['id'],
-      title: json['title'],
-      date: DateTime.parse(json['date']), // Convert the string back to DateTime
-      summary: json['summary'],
-      transcript: json['transcript'],
+      id: json['id'] as String?,
+      title: json['title'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      summary: json['summary'] as String,
+      transcript: json['transcript'] as String,
     );
+  }
+
+  // A method to convert a Recording object into a Map
+  // This is how we'll send data to Supabase
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'summary': summary,
+      'transcript': transcript,
+      // We will add the 'user_id' here later when we implement authentication
+    };
   }
 }
