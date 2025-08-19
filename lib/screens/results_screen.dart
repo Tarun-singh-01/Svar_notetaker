@@ -1,6 +1,7 @@
 // lib/screens/results_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:indic_notetaker/models/recording_model.dart';
 import 'package:intl/intl.dart';
 
@@ -15,80 +16,108 @@ class ResultsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3, // We now have 3 tabs as per your design
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          leading: const BackButton(color: Colors.white),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
           actions: [
             IconButton(onPressed: () {}, icon: const Icon(Icons.share_outlined)),
             IconButton(onPressed: () {}, icon: const Icon(Icons.search)),
           ],
-          bottom: const TabBar(
-            indicatorColor: Color(0xFFBF8BFF),
-            indicatorWeight: 3,
-            tabs: [
-              Tab(text: 'Summary'),
-              Tab(text: 'Transcript'),
-              Tab(text: 'Action Items'), // Added Action Items tab
-            ],
-          ),
         ),
         body: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 16),
-              // We'll add the audio player UI here in a future step
+              // Media Player Placeholder
               Center(
-                child: Icon(
-                  Icons.play_circle_fill_rounded,
-                  size: 64,
-                  color: Colors.white.withOpacity(0.8),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade800,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.play_arrow, color: Colors.white, size: 50),
                 ),
               ),
               const SizedBox(height: 24),
-              // Use the title and date from the recording object
+              // Title
               Text(
                 recording.title,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                style: GoogleFonts.redHatDisplay(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
+              // Date and Time
               Text(
                 DateFormat('MMMM d, yyyy  h:mm a').format(recording.createdAt),
-                style: const TextStyle(color: Colors.grey, fontSize: 16),
+                style: TextStyle(color: Colors.grey[400], fontSize: 16),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              // TabBar
+              const TabBar(
+                indicatorColor: Color(0xFFBF8BFF),
+                indicatorWeight: 3,
+                labelStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                unselectedLabelStyle: TextStyle(fontSize: 16),
+                tabs: [
+                  Tab(text: 'Summary'),
+                  Tab(text: 'Transcript'),
+                  Tab(text: 'Action Items'),
+                ],
+              ),
+              // TabBarView
               Expanded(
                 child: TabBarView(
                   children: [
-                    // --- This is the fix ---
-                    // Display the summary from the passed 'recording' object
-                    SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(vertical: 16.0),
-                      child: Text(
-                        recording.summary,
-                        style: const TextStyle(fontSize: 16, height: 1.5),
-                      ),
+                    // Summary Tab
+                    _buildContentSection("Overview", recording.summary),
+                    // Transcript Tab
+                    _buildContentSection("Transcript", recording.transcript),
+                    // Action Items Tab
+                    _buildContentSection(
+                      "Action Items",
+                      recording.actionItems ?? "No action items were identified." // <-- DISPLAY THE DATA
                     ),
-                    // Display the transcript from the passed 'recording' object
-                    SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(vertical: 16.0),
-                      child: Text(
-                        recording.transcript,
-                        style: const TextStyle(fontSize: 16, height: 1.5),
-                      ),
-                    ),
-                    // Placeholder for Action Items
-                    const Center(child: Text('Action Items will be shown here.')),
                   ],
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Helper widget to build the content for each tab
+  Widget _buildContentSection(String title, String content) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.redHatDisplay(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            content,
+            style: const TextStyle(fontSize: 16, height: 1.6, color: Color(0xFFE0E0E0)),
+          ),
+        ],
       ),
     );
   }

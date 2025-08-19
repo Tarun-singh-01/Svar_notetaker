@@ -1,6 +1,7 @@
 // lib/main.dart
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:indic_notetaker/auth_gate.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -26,8 +27,15 @@ class MyApp extends StatelessWidget {
       title: 'Svar AI',
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF1C1C1E),
+        scaffoldBackgroundColor: const Color(0xFF121212), // Darker background from Figma
         primarySwatch: Colors.deepPurple,
+        // Set the default font to Red Hat Text
+        textTheme: GoogleFonts.redHatTextTextTheme(
+          Theme.of(context).textTheme.apply(
+            bodyColor: Colors.white,
+            displayColor: Colors.white
+          ),
+        ),
       ),
       debugShowCheckedModeBanner: false,
       home: const AuthGate(),
